@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  bi_postgres:
+    image: postgres:15-alpine
+    container_name: bi_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: bi_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - bi_postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d bi_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bi_backend:
+    build: .
+    container_name: bi_backend
+    ports:
+      - "8010:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:admin123@bi_postgres:5432/bi_db
+    volumes:
+      - .:/app
+    depends_on:
+      bi_postgres:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  bi_postgres_data:
