@@ -6,3 +6,4 @@ sqlalchemy
 python-multipart
 pydantic
 psycopg[binary]
+scikit-learn

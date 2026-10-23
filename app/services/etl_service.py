@@ -1,74 +1,67 @@
 # ==============================
 # app/services/etl_service.py
-# Lógica de negocio para el proceso ETL
+# Orquesta el ETL: lee los CSV, guarda "antes", limpia, mide calidad y guarda "después"
 # ==============================
 import pandas as pd
-import numpy as np
 from sqlalchemy.orm import Session
-from app.models import TicketLimpio, TicketSucio
+
+from app.models import (
+    Cuarentena, CrmSucio, EncuestaSucia, ReporteCalidad, TicketLimpio, TicketSucio,
+)
+from app.services.limpieza_service import ejecutar_etl
+from app.services.quality_service import evaluar_calidad, resumir
+
+COLUMNAS_LIMPIO = [
+    "id_ticket", "id_cliente", "metodo_match", "fecha_apertura", "fecha_cierre",
+    "categoria", "canal", "estado", "agente", "reabierto", "sla_objetivo_horas",
+    "segmento", "satisfaccion", "tiempo_resolucion_horas", "incumple_sla",
+]
+
+
+def _registros(df: pd.DataFrame, columnas: list) -> list:
+    """DataFrame -> lista de dicts, con los vacíos convertidos a None."""
+    d = df[columnas].astype(object)
+    d = d.where(d.notna(), None)
+    return d.to_dict("records")
+
 
 def procesar_y_guardar(crm_path: str, tickets_path: str, encuestas_path: str, db: Session):
-    # 1. Leer archivos
-    df_crm = pd.read_csv(crm_path)
-    df_tickets = pd.read_csv(tickets_path)
-    df_encuestas = pd.read_csv(encuestas_path)
+    # 1. Leer los archivos crudos como texto, sin que pandas "arregle" nada
+    crm_raw = pd.read_csv(crm_path, dtype=str)
+    tickets_raw = pd.read_csv(tickets_path, dtype=str)
+    encuestas_raw = pd.read_csv(encuestas_path, dtype=str)
 
-    # --- GUARDAR EL "ANTES" EN LA BD (Tabla Sucios) ---
-    db.query(TicketSucio).delete() # Limpiar tabla antes de insertar
-    for _, row in df_tickets.head(100).iterrows(): # Guardamos 100 para el dashboard
-        sucio = TicketSucio(
-            id_ticket=str(row['id_ticket']),
-            id_cliente=str(row['id_cliente']) if pd.notna(row['id_cliente']) else None,
-            fecha_apertura=str(row['fecha_apertura']) if pd.notna(row['fecha_apertura']) else None,
-            fecha_cierre=str(row['fecha_cierre']) if pd.notna(row['fecha_cierre']) else None,
-            categoria=str(row['categoria']),
-            canal=str(row['canal']),
-            estado=str(row['estado']),
-            agente=str(row['agente']),
-            reabierto=int(row['reabierto']),
-            sla_objetivo_horas=float(row['sla_objetivo_horas'])
-        )
-        db.add(sucio)
+    # 2. Calidad ANTES (sobre los datos tal como llegaron)
+    ids_crm_crudo = set(crm_raw["id_cliente"].dropna().astype(str))
+    filas_antes = evaluar_calidad(crm_raw, tickets_raw, encuestas_raw, ids_crm_crudo, "antes")
+
+    # 3. Guardar los datos crudos (evidencia del "antes")
+    for modelo in (TicketSucio, CrmSucio, EncuestaSucia):
+        db.query(modelo).delete()
+    db.bulk_insert_mappings(TicketSucio, _registros(tickets_raw, list(tickets_raw.columns)))
+    db.bulk_insert_mappings(CrmSucio, _registros(crm_raw, list(crm_raw.columns)))
+    db.bulk_insert_mappings(EncuestaSucia, _registros(encuestas_raw, list(encuestas_raw.columns)))
     db.commit()
 
-    # --- INICIA EL ETL (LIMPIEZA) ---
-    df_crm['id_cliente'] = df_crm['id_cliente'].str.strip().str.upper()
-    
-    df_tickets['id_cliente'] = df_tickets['id_cliente'].astype(str).str.replace('-', '').str.strip().str.upper()
-    df_tickets['id_cliente'] = df_tickets['id_cliente'].replace(['NONE', 'NAN'], np.nan)
-    df_tickets['fecha_apertura'] = pd.to_datetime(df_tickets['fecha_apertura'], dayfirst=True, errors='coerce')
-    df_tickets['fecha_cierre'] = pd.to_datetime(df_tickets['fecha_cierre'], dayfirst=True, errors='coerce')
-    df_tickets['categoria'] = df_tickets['categoria'].str.strip().str.title()
-    
-    df_encuestas['id_cliente'] = df_encuestas['id_cliente'].str.strip().str.upper()
+    # 4. Limpieza, emparejamiento de clientes y cálculo de métricas
+    crm, tickets, encuestas, cuarentena, resumen_match = ejecutar_etl(
+        crm_raw, tickets_raw, encuestas_raw)
 
-    # Unión (Merge)
-    df_final = pd.merge(df_tickets, df_crm, on='id_cliente', how='left')
-    df_final = pd.merge(df_final, df_encuestas, on='id_cliente', how='left')
+    # 5. Calidad DESPUÉS (mismas reglas, sobre los datos limpios)
+    filas_despues = evaluar_calidad(crm, tickets, encuestas, set(crm["id_cliente"]), "despues")
 
-    # Cálculos
-    df_final['tiempo_resolucion_horas'] = (df_final['fecha_cierre'] - df_final['fecha_apertura']).dt.total_seconds() / 3600
-    df_final['tiempo_resolucion_horas'] = df_final['tiempo_resolucion_horas'].fillna(0)
-
-    # --- GUARDAR EL "DESPUÉS" EN LA BD (Tabla Limpios) ---
-    db.query(TicketLimpio).delete()
-    for _, row in df_final.iterrows():
-        nuevo_ticket = TicketLimpio(
-            id_ticket=str(row['id_ticket']),
-            id_cliente=str(row['id_cliente']) if pd.notna(row['id_cliente']) else None,
-            fecha_apertura=str(row['fecha_apertura']),
-            fecha_cierre=str(row['fecha_cierre']) if pd.notna(row['fecha_cierre']) else None,
-            categoria=str(row['categoria']),
-            canal=str(row['canal']),
-            estado=str(row['estado']),
-            agente=str(row['agente']),
-            reabierto=int(row['reabierto']),
-            sla_objetivo_horas=float(row['sla_objetivo_horas']),
-            segmento=str(row['segmento']) if pd.notna(row['segmento']) else None,
-            satisfaccion=float(row['satisfaccion']) if pd.notna(row['satisfaccion']) else None,
-            tiempo_resolucion_horas=float(row['tiempo_resolucion_horas'])
-        )
-        db.add(nuevo_ticket)
-    
+    # 6. Guardar resultados
+    for modelo in (TicketLimpio, Cuarentena, ReporteCalidad):
+        db.query(modelo).delete()
+    db.bulk_insert_mappings(TicketLimpio, _registros(tickets, COLUMNAS_LIMPIO))
+    db.bulk_insert_mappings(Cuarentena, cuarentena)
+    db.bulk_insert_mappings(ReporteCalidad, filas_antes + filas_despues)
     db.commit()
-    return len(df_final)
+
+    return {
+        "total_tickets": len(tickets),
+        "calidad_antes": resumir(filas_antes),
+        "calidad_despues": resumir(filas_despues),
+        "registros_en_cuarentena": len(cuarentena),
+        "emparejamiento_clientes": resumen_match,
+    }
