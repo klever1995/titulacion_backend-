@@ -18,14 +18,12 @@ services:
       retries: 5
 
   bi_backend:
-    build: .
+    image: ksrobalino/bi_backend:latest
     container_name: bi_backend
     ports:
       - "8010:8000"
     environment:
       DATABASE_URL: postgresql://admin:admin123@bi_postgres:5432/bi_db
-    volumes:
-      - .:/app
     depends_on:
       bi_postgres:
         condition: service_healthy
