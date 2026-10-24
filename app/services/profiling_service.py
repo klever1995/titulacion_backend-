@@ -1,7 +1,3 @@
-# ==============================
-# app/services/profiling_service.py
-# Perfilado de las fuentes crudas (describe, no corrige)
-# ==============================
 import re
 
 import pandas as pd
@@ -11,6 +7,7 @@ from app.services.quality_service import evaluar_calidad
 
 
 def _patron_id(x) -> str:
+    """Clasifica un id_cliente según su formato."""
     if es_nulo(x):
         return "nulo"
     s = str(x)
@@ -28,6 +25,7 @@ def _patron_id(x) -> str:
 
 
 def _patron_fecha(x) -> str:
+    """Clasifica una fecha según el formato con el que llegó."""
     if es_nulo(x):
         return "nulo"
     s = str(x).strip()
@@ -45,15 +43,20 @@ def _patron_fecha(x) -> str:
 
 
 def _columnas(df: pd.DataFrame) -> list:
-    return [{"columna": c,
-             "nulos": int(df[c].map(es_nulo).sum()),
-             "porcentaje_nulos": round(100 * df[c].map(es_nulo).mean(), 2),
-             "valores_distintos": int(df[c].nunique(dropna=True))}
-            for c in df.columns]
+    """Resume nulos y valores distintos por columna."""
+    return [
+        {
+            "columna": c,
+            "nulos": int(df[c].map(es_nulo).sum()),
+            "porcentaje_nulos": round(100 * df[c].map(es_nulo).mean(), 2),
+            "valores_distintos": int(df[c].nunique(dropna=True)),
+        }
+        for c in df.columns
+    ]
 
 
 def perfilar_fuentes(crm: pd.DataFrame, tickets: pd.DataFrame, encuestas: pd.DataFrame) -> dict:
-    """Recibe los tres DataFrames crudos (todo texto) y describe sus problemas."""
+    """Describe los problemas de las tres fuentes crudas sin corregirlos."""
     ids_crm = set(crm["id_cliente"].dropna().astype(str).str.strip())
     reglas = evaluar_calidad(crm, tickets, encuestas, ids_crm, "antes")
 

@@ -1,0 +1,88 @@
+name: Deploy BI Backend to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build, Push and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/bi_backend:latest -f Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/bi_backend:latest
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          script: |
+            cd /root/bi_project || mkdir -p /root/bi_project
+            cd /root/bi_project
+
+            if [ ! -f docker-compose.yml ]; then
+              cat > docker-compose.yml << 'EOF'
+            services:
+              bi_postgres:
+                image: postgres:15-alpine
+                container_name: bi_postgres
+                environment:
+                  POSTGRES_USER: admin
+                  POSTGRES_PASSWORD: admin123
+                  POSTGRES_DB: bi_db
+                ports:
+                  - "5435:5432"
+                volumes:
+                  - bi_postgres_data:/var/lib/postgresql/data
+                restart: always
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U admin -d bi_db"]
+                  interval: 5s
+                  timeout: 5s
+                  retries: 5
+
+              bi_backend:
+                image: ${{ secrets.DOCKER_USERNAME }}/bi_backend:latest
+                container_name: bi_backend
+                ports:
+                  - "8010:8000"
+                environment:
+                  DATABASE_URL: postgresql://admin:admin123@bi_postgres:5432/bi_db
+                volumes:
+                  - .:/app
+                depends_on:
+                  bi_postgres:
+                    condition: service_healthy
+                restart: always
+                dns:
+                  - 8.8.8.8
+                  - 1.1.1.1
+
+            volumes:
+              bi_postgres_data:
+            EOF
+            fi
+
+            docker pull ${{ secrets.DOCKER_USERNAME }}/bi_backend:latest
+            docker compose down || true
+            docker compose up -d
+            docker image prune -f

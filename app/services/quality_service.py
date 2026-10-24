@@ -1,36 +1,49 @@
-# ==============================
-# app/services/quality_service.py
-# Reglas de calidad (completitud, unicidad, consistencia, validez).
-# Las mismas reglas se aplican a los datos crudos (antes) y a los limpios (después).
-# ==============================
 import pandas as pd
 
 from app.services.reglas import (
-    CANALES_OFICIALES, CATEGORIAS_OFICIALES, ESTADOS_OFICIALES, REGEX_FECHA_ISO,
-    REGEX_ID, SEGMENTOS_OFICIALES, clave, es_nulo, parsear_fechas,
+    CANALES_OFICIALES,
+    CATEGORIAS_OFICIALES,
+    ESTADOS_OFICIALES,
+    REGEX_FECHA_ISO,
+    REGEX_ID,
+    SEGMENTOS_OFICIALES,
+    clave,
+    es_nulo,
+    parsear_fechas,
 )
 
+# Dimensiones de calidad evaluadas en cada fuente
 DIMENSIONES = ["completitud", "unicidad", "consistencia", "validez"]
 
 
 def _fila(fuente, dimension, regla, etapa, evaluados, errores):
+    """Construye el resultado de una regla con su puntaje de cumplimiento."""
     evaluados, errores = int(evaluados), int(errores)
     puntaje = round(100 * (1 - errores / evaluados), 2) if evaluados else 100.0
-    return {"fuente": fuente, "dimension": dimension, "regla": regla, "etapa": etapa,
-            "registros_evaluados": evaluados, "registros_con_error": errores,
-            "puntaje": puntaje}
+    return {
+        "fuente": fuente,
+        "dimension": dimension,
+        "regla": regla,
+        "etapa": etapa,
+        "registros_evaluados": evaluados,
+        "registros_con_error": errores,
+        "puntaje": puntaje,
+    }
 
 
 def _informado(s: pd.Series) -> pd.Series:
+    """Máscara de valores informados (no nulos)."""
     return ~s.map(es_nulo)
 
 
 def _fuera_catalogo(s: pd.Series, oficiales: set):
+    """Cuenta valores informados y cuántos no pertenecen al catálogo oficial."""
     t = s[_informado(s)]
     return len(t), int((~t.isin(oficiales)).sum())
 
 
 def _formato_iso(s: pd.Series):
+    """Cuenta valores informados y cuántos no cumplen el formato ISO."""
     if pd.api.types.is_datetime64_any_dtype(s):
         return int(s.notna().sum()), 0
     t = s[_informado(s)].astype(str)
@@ -38,10 +51,10 @@ def _formato_iso(s: pd.Series):
 
 
 def evaluar_calidad(crm, tickets, encuestas, ids_crm: set, etapa: str, corte=None):
-    """Devuelve una lista de filas {fuente, dimension, regla, etapa, evaluados, errores, puntaje}."""
+    """Evalúa las reglas de calidad sobre las tres fuentes y devuelve una lista de resultados."""
     f = []
 
-    # ---------------- TICKETS ----------------
+    # Tickets
     t = tickets
     est = t["estado"].map(clave)
     abierto = est.isin(["abierto", "pendiente"])
@@ -66,9 +79,11 @@ def evaluar_calidad(crm, tickets, encuestas, ids_crm: set, etapa: str, corte=Non
     ids = t["id_cliente"][_informado(t["id_cliente"])].astype(str)
     f.append(_fila("tickets", "consistencia", "id_cliente con formato C####", etapa,
                    len(ids), (~ids.str.fullmatch(REGEX_ID)).sum()))
-    for col, oficiales, nombre in [("categoria", CATEGORIAS_OFICIALES, "categoría"),
-                                   ("canal", CANALES_OFICIALES, "canal"),
-                                   ("estado", ESTADOS_OFICIALES, "estado")]:
+    for col, oficiales, nombre in [
+        ("categoria", CATEGORIAS_OFICIALES, "categoría"),
+        ("canal", CANALES_OFICIALES, "canal"),
+        ("estado", ESTADOS_OFICIALES, "estado"),
+    ]:
         n, e = _fuera_catalogo(t[col], oficiales)
         f.append(_fila("tickets", "consistencia", f"{nombre} igual al catálogo oficial", etapa, n, e))
     for col in ["fecha_apertura", "fecha_cierre"]:
@@ -90,7 +105,7 @@ def evaluar_calidad(crm, tickets, encuestas, ids_crm: set, etapa: str, corte=Non
     f.append(_fila("tickets", "validez", "id_cliente existe en el CRM", etapa,
                    len(ids), (~ids.isin(ids_crm)).sum()))
 
-    # ---------------- CRM ----------------
+    # CRM
     c = crm
     f.append(_fila("crm", "completitud", "segmento informado", etapa,
                    len(c), (~_informado(c["segmento"])).sum()
@@ -108,7 +123,7 @@ def evaluar_calidad(crm, tickets, encuestas, ids_crm: set, etapa: str, corte=Non
     f.append(_fila("crm", "validez", "fecha_alta es una fecha válida y no futura", etapa,
                    con_alta.sum(), (con_alta & (alta.isna() | (alta > corte))).sum()))
 
-    # ---------------- ENCUESTAS ----------------
+    # Encuestas
     s = encuestas
     f.append(_fila("encuestas", "completitud", "id_ticket informado", etapa,
                    len(s), (~_informado(s["id_ticket"])).sum()))

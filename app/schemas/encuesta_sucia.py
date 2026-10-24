@@ -1,11 +1,10 @@
-# ==============================
-# app/schemas/encuesta_sucia.py
-# ==============================
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class EncuestaSuciaResponse(BaseModel):
+    """Registro crudo de una encuesta expuesto por la API."""
     id_ticket: Optional[str] = None
     id_cliente: Optional[str] = None
     satisfaccion: Optional[str] = None

@@ -1,13 +1,9 @@
-# ==============================
-# app/schemas/ticket_sucio.py
-# Esquema Pydantic para TicketSucio
-# ==============================
-from pydantic import BaseModel, Field
 from typing import Optional
 
+from pydantic import BaseModel, Field
 
 class TicketSucioResponse(BaseModel):
-    # Todo es opcional y de tipo texto: los datos crudos llegan con errores
+    """Ticket crudo tal como llegó, sin normalizar."""
     id_ticket: Optional[str] = Field(None, description="Identificador del ticket original")
     id_cliente: Optional[str] = Field(None, description="ID del cliente tal como llegó (con guiones, espacios o nulo)")
     fecha_apertura: Optional[str] = Field(None, description="Fecha en formato original")

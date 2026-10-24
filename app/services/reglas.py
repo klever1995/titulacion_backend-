@@ -1,7 +1,3 @@
-# ==============================
-# app/services/reglas.py
-# Catálogos oficiales y funciones de normalización (sin base de datos)
-# ==============================
 import re
 import unicodedata
 
@@ -29,20 +25,25 @@ ESTADOS = {
 }
 SEGMENTOS = {"corporativo": "Corporativo", "personal": "Personal", "pyme": "Pyme"}
 
+# Conjuntos de valores oficiales para validar contra los catálogos
 CATEGORIAS_OFICIALES = set(CATEGORIAS.values())
 CANALES_OFICIALES = set(CANALES.values())
 ESTADOS_OFICIALES = set(ESTADOS.values())
 SEGMENTOS_OFICIALES = set(SEGMENTOS.values())
 
+# Formatos de fecha aceptados; se prueban en orden
 FORMATOS_FECHA = [
     "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%Y/%m/%d %H:%M:%S",
     "%Y-%m-%d", "%d/%m/%Y",
 ]
+
+# Expresiones regulares de validación
 REGEX_ID = r"C\d{4}"
 REGEX_FECHA_ISO = r"\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?"
 
 
 def es_nulo(x) -> bool:
+    """Indica si un valor debe tratarse como nulo (None, NaN o cadena vacía)."""
     if x is None:
         return True
     if isinstance(x, float) and np.isnan(x):
@@ -51,8 +52,11 @@ def es_nulo(x) -> bool:
 
 
 def sin_tilde(s: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFD", s)
-                   if unicodedata.category(c) != "Mn")
+    """Quita las tildes de un texto."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s)
+        if unicodedata.category(c) != "Mn"
+    )
 
 
 def clave(x):
@@ -80,6 +84,7 @@ def normalizar_id(x):
 
 
 def normalizar_agente(x):
+    """Devuelve el agente en formato 'Agente X' o 'Sin asignar' si no es válido."""
     if es_nulo(x):
         return "Sin asignar"
     s = clave(x).replace("_", " ").title()
@@ -87,7 +92,7 @@ def normalizar_agente(x):
 
 
 def parsear_fechas(serie: pd.Series) -> pd.Series:
-    """Convierte texto con varios formatos a fecha. Se asume día/mes/año con '/'."""
+    """Convierte texto con varios formatos a fecha; con '/' se asume día/mes/año."""
     if pd.api.types.is_datetime64_any_dtype(serie):
         return serie
     s = serie.astype("string").str.strip()
@@ -99,5 +104,9 @@ def parsear_fechas(serie: pd.Series) -> pd.Series:
 
 
 def a_booleano(serie: pd.Series) -> pd.Series:
-    valores = {"1": True, "si": True, "true": True, "0": False, "no": False, "false": False}
+    """Convierte 1/0, sí/no y true/false en booleanos; lo desconocido queda nulo."""
+    valores = {
+        "1": True, "si": True, "true": True,
+        "0": False, "no": False, "false": False,
+    }
     return serie.map(lambda v: valores.get(clave(v)) if clave(v) is not None else None)

@@ -1,11 +1,10 @@
-# ==============================
-# app/schemas/crm_sucio.py
-# ==============================
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class CrmSucioResponse(BaseModel):
+    """Registro crudo del CRM expuesto por la API."""
     id_cliente: Optional[str] = None
     segmento: Optional[str] = None
     ciudad: Optional[str] = None

@@ -1,13 +1,11 @@
-# ==============================
-# app/schemas/ticket_limpio.py
-# Esquema Pydantic para TicketLimpio
-# ==============================
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class TicketLimpioResponse(BaseModel):
+    """Ticket procesado por el ETL, con datos normalizados y campos calculados."""
     id_ticket: str = Field(..., description="Identificador del ticket")
     id_cliente: Optional[str] = Field(None, description="ID estandarizado")
     metodo_match: Optional[str] = Field(None, description="exacto, normalizado, aproximado o sin_match")

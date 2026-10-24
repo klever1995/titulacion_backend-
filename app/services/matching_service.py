@@ -1,14 +1,10 @@
-# ==============================
-# app/services/matching_service.py
-# Emparejamiento de clientes por niveles: exacto -> normalizado -> aproximado
-# ==============================
 import pandas as pd
 
 from app.services.reglas import es_nulo, normalizar_id
 
 
 def _vecinos(id_cliente: str) -> set:
-    """IDs a distancia 1: dos dígitos intercambiados o un dígito distinto."""
+    """IDs a distancia uno: un par de dígitos intercambiados o un dígito distinto."""
     prefijo, digitos = id_cliente[0], id_cliente[1:]
     out = set()
     for i in range(len(digitos) - 1):
@@ -19,16 +15,13 @@ def _vecinos(id_cliente: str) -> set:
         for n in "0123456789":
             if n != digitos[i]:
                 out.add(prefijo + digitos[:i] + n + digitos[i + 1:])
+        out.add(prefijo + digitos[:i] + n + digitos[i + 1:])
     out.discard(id_cliente)
     return out
 
 
 def emparejar_cliente(crudo, ids_crm: set):
-    """Devuelve (id_final, metodo, motivo, candidato).
-
-    metodo: exacto | normalizado | aproximado | sin_match
-    Si id_final es None el registro va a cuarentena con su motivo.
-    """
+    """Empareja un id_cliente con el CRM por niveles y devuelve (id_final, metodo, motivo, candidato)."""
     if es_nulo(crudo):
         return None, "sin_match", "id_cliente nulo", None
     canon = normalizar_id(crudo)
@@ -46,7 +39,10 @@ def emparejar_cliente(crudo, ids_crm: set):
 
 
 def emparejar_serie(serie: pd.Series, ids_crm: set) -> pd.DataFrame:
-    """Aplica el emparejamiento a una columna y devuelve un DataFrame con los resultados."""
+    """Aplica el emparejamiento a una columna y devuelve el resultado por fila."""
     res = serie.map(lambda v: emparejar_cliente(v, ids_crm))
-    return pd.DataFrame(res.tolist(), index=serie.index,
-                        columns=["id_final", "metodo", "motivo", "candidato"])
+    return pd.DataFrame(
+        res.tolist(),
+        index=serie.index,
+        columns=["id_final", "metodo", "motivo", "candidato"],
+    )
