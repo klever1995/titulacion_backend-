@@ -111,6 +111,6 @@ El sistema ejecuta el siguiente flujo a través de la interfaz:
 
 ## Autor
 
-**Klever Sandro Robalino Guamán**
-Carrera de Ingeniería en Sistemas de Información
-Universidad Central del Ecuador
+**Klever Sandro Robalino Guamán**<br>
+**Carrera de Ingeniería en Sistemas de Información**<br>
+**Universidad Central del Ecuador**
