@@ -19,13 +19,11 @@ COLUMNAS_LIMPIO = [
     "segmento", "satisfaccion", "tiempo_resolucion_horas", "incumple_sla",
 ]
 
-
 def _registros(df: pd.DataFrame, columnas: list) -> list:
     """DataFrame a lista de dicts, con los vacíos convertidos a None."""
     d = df[columnas].astype(object)
     d = d.where(d.notna(), None)
     return d.to_dict("records")
-
 
 def procesar_y_guardar(crm_path: str, tickets_path: str, encuestas_path: str, db: Session):
     """Ejecuta el ETL completo: guarda el antes, limpia, mide calidad y guarda el después."""
@@ -47,7 +45,7 @@ def procesar_y_guardar(crm_path: str, tickets_path: str, encuestas_path: str, db
     db.commit()
 
     # Limpieza, emparejamiento y métricas
-    crm, tickets, encuestas, cuarentena, resumen_match = ejecutar_etl(
+    crm, tickets, encuestas, cuarentena, resumen_match, resumen_match_encuestas = ejecutar_etl(
         crm_raw, tickets_raw, encuestas_raw
     )
 
@@ -68,4 +66,5 @@ def procesar_y_guardar(crm_path: str, tickets_path: str, encuestas_path: str, db
         "calidad_despues": resumir(filas_despues),
         "registros_en_cuarentena": len(cuarentena),
         "emparejamiento_clientes": resumen_match,
+        "emparejamiento_encuestas": resumen_match_encuestas, # <--- NUEVO
     }
