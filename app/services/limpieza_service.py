@@ -209,6 +209,9 @@ def limpiar_encuestas(raw: pd.DataFrame, ids_crm: set, tickets_limpios: pd.DataF
         fila["motivo"] = "id_cliente de la encuesta: " + motivo
     q += filas
     df["id_cliente"] = m["id_final"]
+    
+    # NUEVO: Guardamos el método de emparejamiento en el DataFrame de encuestas
+    df["metodo_match"] = m["metodo"]
 
     # Si el cliente de la encuesta no coincide con el del ticket, se registra en cuarentena
     cli_ticket = tickets_limpios.set_index("id_ticket")["id_cliente"]
@@ -225,7 +228,7 @@ def limpiar_encuestas(raw: pd.DataFrame, ids_crm: set, tickets_limpios: pd.DataF
 
 
 def ejecutar_etl(crm_raw: pd.DataFrame, tickets_raw: pd.DataFrame, encuestas_raw: pd.DataFrame):
-    """Limpia las tres fuentes y devuelve (crm, tickets, encuestas, cuarentena, resumen_match)."""
+    """Limpia las tres fuentes y devuelve (crm, tickets, encuestas, cuarentena, resumen_match, resumen_match_encuestas)."""
     crm, q1 = limpiar_crm(crm_raw)
     ids_crm = set(crm["id_cliente"])
     tickets, q2 = limpiar_tickets(tickets_raw, ids_crm, crm)
@@ -234,4 +237,8 @@ def ejecutar_etl(crm_raw: pd.DataFrame, tickets_raw: pd.DataFrame, encuestas_raw
     sat = encuestas.set_index("id_ticket")["satisfaccion"]
     tickets["satisfaccion"] = tickets["id_ticket"].map(sat)
     resumen_match = tickets["metodo_match"].value_counts().to_dict()
-    return crm, tickets, encuestas, q1 + q2 + q3, resumen_match
+    
+    # NUEVO: Calculamos el resumen de emparejamiento de las encuestas
+    resumen_match_encuestas = encuestas["metodo_match"].value_counts().to_dict()
+    
+    return crm, tickets, encuestas, q1 + q2 + q3, resumen_match, resumen_match_encuestas

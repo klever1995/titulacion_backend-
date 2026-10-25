@@ -66,5 +66,5 @@ def procesar_y_guardar(crm_path: str, tickets_path: str, encuestas_path: str, db
         "calidad_despues": resumir(filas_despues),
         "registros_en_cuarentena": len(cuarentena),
         "emparejamiento_clientes": resumen_match,
-        "emparejamiento_encuestas": resumen_match_encuestas, # <--- NUEVO
+        "emparejamiento_encuestas": resumen_match_encuestas, 
     }

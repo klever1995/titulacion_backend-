@@ -19,11 +19,22 @@ RUTA_CRM = f"{DIR_RAW}/crm_sucio.csv"
 RUTA_TICKETS = f"{DIR_RAW}/tickets_sucio.csv"
 RUTA_ENCUESTAS = f"{DIR_RAW}/encuestas_sucio.csv"
 
+# NUEVO: Diccionario en memoria para guardar el resumen de encuestas
+# (Se borra al reiniciar el servidor, pero se mantiene mientras esté encendido)
+RESUMEN_ENCUESTAS_MEMORIA = {}
+
 
 def _correr(db: Session):
     """Ejecuta el ETL sobre los CSV de data/raw y maneja errores de base."""
+    global RESUMEN_ENCUESTAS_MEMORIA  # NUEVO: Para poder modificar la variable global
+    
     try:
         resultado = procesar_y_guardar(RUTA_CRM, RUTA_TICKETS, RUTA_ENCUESTAS, db)
+        
+        # NUEVO: Guardamos el resumen de encuestas en la memoria
+        if "emparejamiento_encuestas" in resultado:
+            RESUMEN_ENCUESTAS_MEMORIA = resultado["emparejamiento_encuestas"]
+            
     except Exception as e:
         db.rollback()
         logger.error(f"Error en ETL: {e}")
@@ -67,7 +78,9 @@ def subir_archivos(
 
 @router.get("/resumen")
 def resumen_etl(db: Session = Depends(get_db)):
-    """Estado del último ETL, leído de la base de datos."""
+    """Estado del último ETL, leído de la base de datos y de la memoria."""
+    global RESUMEN_ENCUESTAS_MEMORIA  # NUEVO: Para poder leer la variable global
+    
     limpios = db.query(func.count(TicketLimpio.id)).scalar() or 0
     crudos = db.query(func.count(TicketSucio.id)).scalar() or 0
     match = {
@@ -83,11 +96,13 @@ def resumen_etl(db: Session = Depends(get_db)):
         .order_by(func.count().desc())
         .all()
     ]
+    
     return {
         "etl_ejecutado": limpios > 0,
         "tickets_crudos": crudos,
         "tickets_limpios": limpios,
         "emparejamiento_clientes": match,
+        "emparejamiento_encuestas": RESUMEN_ENCUESTAS_MEMORIA, 
         "cuarentena": cuarentena,
         "total_cuarentena": sum(c["cantidad"] for c in cuarentena),
     }
